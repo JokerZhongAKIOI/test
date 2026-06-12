@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业提交系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .blur-bg {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .fold-enter-active, .fold-leave-active {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .fold-enter-from, .fold-leave-to {
+            max-height: 0;
+            opacity: 0;
+        }
+        .fold-enter-to, .fold-leave-from {
+            max-height: 2000px;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans">
+
+<div id="app" class="pb-16">
+    
+    <!-- ========== 顶部导航栏 ========== -->
+    <nav v-if="isLoggedIn" class="bg-blue-600 text-white shadow-lg sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3 cursor-pointer" @click="navigateTo('home')">
+                <div class="bg-white text-blue-600 p-1.5 rounded-lg">
+                    <i class="fa-solid fa-graduation-cap text-xl"></i>
+                </div>
+                <span class="font-extrabold text-xl tracking-wider">作业提交系统</span>
+            </div>
+            <div class="flex items-center space-x-1 md:space-x-4 lg:space-x-6">
+                <template v-if="currentUser.role !== 'teacher'">
+                    <a href="#home" @click="navigateTo('home')" :class="navLinkClass('home')">首页</a>
+                    <a href="#submit" @click="navigateTo('submit')" :class="navLinkClass('submit')">提交作业</a>
+                    <a href="#perfect" @click="navigateTo('perfect')" :class="navLinkClass('perfect')">优秀作业</a>
+                </template>
+                <template v-else>
+                    <a href="#home" @click="navigateTo('home')" :class="navLinkClass('home')">首页</a>
+                    <a href="#perfect" @click="navigateTo('perfect')" :class="navLinkClass('perfect')">优秀作业</a>
+                    <a href="#manage" @click="navigateTo('manage')" :class="navLinkClass('manage')">后台</a>
+                </template>
+                <div class="relative cursor-pointer p-2 hover:bg-blue-700 rounded-full transition" @click="toggleNotification">
+                    <i class="fa-regular fa-envelope text-lg"></i>
+                    <span v-if="hasMessage" class="absolute top-1.5 right-1.5 bg-red-500 w-2.5 h-2.5 rounded-full ring-2 ring-blue-600 animate-pulse"></span>
+                </div>
+                <a href="#me" @click="navigateTo('me')" :class="navLinkClass('me')">我的</a>
+                <div class="bg-blue-700 px-3 py-1.5 rounded-lg text-sm flex items-center space-x-2 shadow-inner">
+                    <span class="font-semibold">{{ currentUser.nickname }}</span>
+                    <span class="text-xs bg-blue-500 px-1.5 py-0.5 rounded text-blue-100 font-bold">{{ roleText(currentUser.role) }}</span>
+                    <button @click="logout" class="text-red-300 hover:text-red-100 font-bold border-l pl-2 border-blue-500">退出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 mt-6">
+        
+        <!-- ========== 登录 ========== -->
+        <div v-if="currentPath === 'login'" class="min-h-[80vh] flex items-center justify-center">
+            <div class="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 w-full max-w-md">
+                <div class="text-center mb-8">
+                    <div class="bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner animate-bounce">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <h2 class="text-3xl font-extrabold text-slate-800">系统登录</h2>
+                    <p class="text-slate-400 text-sm mt-1">请验证您的身份以继续访问</p>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider mb-1.5 text-slate-500">名称 (昵称)</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-user"></i></span>
+                            <input v-model="loginForm.nickname" type="text" class="w-full border border-slate-200 pl-10 pr-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="请输入您的昵称">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider mb-1.5 text-slate-500">密码</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-lock"></i></span>
+                            <input v-model="loginForm.password" type="password" class="w-full border border-slate-200 pl-10 pr-4 py-3 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" placeholder="请输入密码">
+                        </div>
+                    </div>
+                    <button @click="handleLogin" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-200 transition-all">立即登录</button>
+                    <div class="flex justify-between items-center text-xs mt-6 pt-4 border-t border-slate-100">
+                        <button @click="requestPasswordReset" class="hover:underline text-red-500 font-semibold">申请重置密码为 123456</button>
+                        <a href="#register" @click="navigateTo('register')" class="hover:underline font-bold text-blue-600 flex items-center gap-1">
+                            注册新账号 <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 注册 ========== -->
+        <div v-if="currentPath === 'register'" class="min-h-[85vh] flex items-center justify-center">
+            <div class="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 w-full max-w-lg">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-black text-slate-800">申请注册账号</h2>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">真实姓名（家长请填孩子名字）</label>
+                        <input v-model="registerForm.realName" type="text" class="w-full border p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="真实姓名">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">昵称</label>
+                        <input v-model="registerForm.nickname" type="text" class="w-full border p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="系统昵称">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">年级 (1-9)</label>
+                            <select v-model="registerForm.grade" class="w-full border p-2.5 rounded-lg outline-none">
+                                <option v-for="g in 9" :key="g" :value="g">{{ g }}年级</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 mb-1">班级 (1-99)</label>
+                            <input v-model.number="registerForm.classNum" type="number" min="1" max="99" class="w-full border p-2.5 rounded-lg outline-none" placeholder="3">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">密码</label>
+                        <input v-model="registerForm.password" type="password" class="w-full border p-2.5 rounded-lg outline-none" placeholder="设置密码">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">确认密码</label>
+                        <input v-model="registerForm.confirmPassword" type="password" class="w-full border p-2.5 rounded-lg outline-none" placeholder="重新输入">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">身份类型</label>
+                        <select v-model="registerForm.role" class="w-full border p-2.5 rounded-lg outline-none">
+                            <option value="student">学生</option>
+                            <option value="parent">家长</option>
+                            <option value="teacher">老师</option>
+                        </select>
+                    </div>
+                    <button @click="handleRegister" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg transition-all">立即申请注册</button>
+                    <div class="text-center text-xs mt-4 pt-2 border-t">
+                        <a href="#login" @click="navigateTo('login')" class="text-blue-500 hover:underline">&larr; 返回登录</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 首页 ========== -->
+        <div v-if="currentPath === 'home'">
+            <h1 class="text-3xl font-extrabold text-center my-6 text-slate-800">欢迎来到作业提交系统</h1>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- 左边栏 -->
+                <div class="lg:col-span-5 space-y-6">
+                    <!-- 公告栏 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-t-4 border-t-blue-500 hover:shadow-md transition">
+                        <h2 class="text-lg font-black mb-3 flex items-center gap-2"><i class="fa-solid fa-bullhorn text-blue-500"></i> 公告栏</h2>
+                        <div class="text-slate-600 text-sm leading-relaxed" v-html="renderMarkdown(truncateText(announcement, 50))"></div>
+                        <button @click="showAnnounceModal = true" class="mt-4 text-blue-600 hover:text-blue-800 font-bold text-xs flex items-center gap-1">
+                            点击查看详情 <i class="fa-solid fa-angles-right"></i>
+                        </button>
+                    </div>
+                    <!-- 提交作业 (学生/家长) -->
+                    <div v-if="currentUser.role !== 'teacher'" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-t-4 border-t-green-500 hover:shadow-md transition">
+                        <h2 class="text-lg font-black mb-4 flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up text-green-500"></i> 提交作业</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">文字描述</label>
+                                <textarea v-model="quickSubmit.desc" rows="3" class="w-full border p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-400" placeholder="输入作业描述..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">上传图片</label>
+                                <input type="file" @change="handleImageUpload($event, 'quick')" accept="image/*" class="w-full text-xs">
+                            </div>
+                            <div v-if="quickSubmit.preview" class="border p-2 rounded-xl bg-slate-50 flex justify-center">
+                                <img :src="quickSubmit.preview" class="max-h-40 object-cover rounded-lg">
+                            </div>
+                            <button @click="submitHomework('quick')" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl shadow transition">确认提交</button>
+                            <p class="text-xs text-slate-400 text-center">对作业有问题？<a href="#submit" @click="navigateTo('submit')" class="text-blue-500 hover:underline font-bold">点这里</a></p>
+                        </div>
+                    </div>
+                </div>
+                <!-- 右边栏 -->
+                <div class="lg:col-span-7 space-y-6">
+                    <!-- 家长提问 -->
+                    <div v-if="currentUser.role !== 'teacher'" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-t-4 border-t-yellow-500 hover:shadow-md transition">
+                        <h2 class="text-lg font-black mb-3 flex items-center gap-2"><i class="fa-solid fa-circle-question text-yellow-500"></i> 家长提问</h2>
+                        <div v-if="currentUser.role === 'student'" class="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50/50">
+                            <div class="text-4xl text-slate-300 mb-2"><i class="fa-solid fa-lock"></i></div>
+                            <p class="text-slate-500 font-bold text-sm">家长账号才可以使用哦！</p>
+                        </div>
+                        <div v-else class="flex gap-3">
+                            <textarea v-model="parentQuestion" rows="3" class="flex-1 border p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-yellow-400" placeholder="输入您想咨询老师的问题..."></textarea>
+                            <button @click="submitQuestion" class="bg-yellow-500 hover:bg-yellow-600 text-white px-5 rounded-xl font-bold transition shadow">提交</button>
+                        </div>
+                    </div>
+                    <!-- 优秀作业轮播 -->
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-t-4 border-t-purple-500 hover:shadow-md transition">
+                        <h2 class="text-lg font-black mb-4 flex items-center gap-2"><i class="fa-solid fa-crown text-purple-500"></i> 优秀作业推荐</h2>
+                        <div v-if="activePerfectList.length > 0" class="relative flex items-center">
+                            <button @click="prevSlide" class="absolute -left-2 bg-white/90 p-2 rounded-full shadow-md border hover:scale-105 transition z-10">
+                                <i class="fa-solid fa-chevron-left text-purple-600"></i>
+                            </button>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 w-full px-6">
+                                <div v-for="item in visibleHomework" :key="item.id" @click="goToPerfectDetail(item.id)" class="bg-slate-50 p-2 rounded-xl border hover:border-purple-200 hover:shadow-md cursor-pointer transition text-center group">
+                                    <div class="overflow-hidden rounded-lg mb-2">
+                                        <img :src="item.image" class="h-24 w-full object-cover group-hover:scale-110 transition duration-300">
+                                    </div>
+                                    <span class="text-xs font-bold text-slate-700 block truncate">{{ item.studentName }}</span>
+                                </div>
+                            </div>
+                            <button @click="nextSlide" class="absolute -right-2 bg-white/90 p-2 rounded-full shadow-md border hover:scale-105 transition z-10">
+                                <i class="fa-solid fa-chevron-right text-purple-600"></i>
+                            </button>
+                        </div>
+                        <div v-else class="text-center py-8 text-slate-400 text-sm">
+                            <i class="fa-regular fa-folder-open text-3xl block mb-2"></i>暂无优秀作业
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 提交作业详细页 ========== -->
+        <div v-if="currentPath === 'submit'" class="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-lg border mt-8">
+            <h2 class="text-2xl font-black mb-6 text-center flex items-center justify-center gap-2"><i class="fa-solid fa-circle-plus text-blue-500"></i> 递交您的功课</h2>
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">文字描述</label>
+                    <textarea v-model="submitPageForm.desc" rows="4" class="w-full border p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400" placeholder="作业文字内容..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">上传图片</label>
+                    <input type="file" @change="handleImageUpload($event, 'page')" accept="image/*" class="w-full text-xs">
+                </div>
+                <div v-if="submitPageForm.preview" class="border p-2 rounded-xl bg-slate-50 flex justify-center">
+                    <img :src="submitPageForm.preview" class="max-h-56 object-cover rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1.5">对作业的问题 (选填)</label>
+                    <textarea v-model="submitPageForm.question" rows="2" class="w-full border p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400" placeholder="向老师提问..."></textarea>
+                </div>
+                <button @click="submitHomework('page')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3 rounded-xl shadow-lg transition">确定提交作业</button>
+            </div>
+        </div>
+
+        <!-- ========== 优秀作业竖直列表 ========== -->
+        <div v-if="currentPath === 'perfect'" class="bg-white p-6 rounded-2xl shadow-sm border max-w-4xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 pb-4 border-b gap-4">
+                <h2 class="text-2xl font-black text-purple-600 flex items-center gap-2"><i class="fa-solid fa-crown"></i> 优秀作业荣誉墙</h2>
+                <div class="relative w-full md:w-72">
+                    <input v-model="searchPerfectName" type="text" placeholder="搜索学生昵称..." class="w-full pl-10 pr-4 py-2 border rounded-full text-sm outline-none focus:ring-2 focus:ring-purple-400">
+                    <span class="absolute left-3.5 top-2.5 text-slate-400"><i class="fa-solid fa-magnifying-glass"></i></span>
+                </div>
+            </div>
+            <div class="space-y-4">
+                <div v-for="item in filteredPerfectList" :key="item.id" @click="goToPerfectDetail(item.id)" class="flex flex-col md:flex-row bg-slate-50/50 p-4 rounded-2xl border hover:border-purple-200 hover:shadow-md cursor-pointer transition gap-5">
+                    <img :src="item.image" class="w-full md:w-52 h-36 object-cover rounded-xl bg-slate-100">
+                    <div class="flex-1 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-extrabold text-lg text-slate-800">{{ item.studentName }}</span>
+                                <span class="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">评分: {{ item.grade }}分</span>
+                            </div>
+                            <p class="text-slate-500 text-sm mt-2 line-clamp-2">{{ item.desc }}</p>
+                        </div>
+                        <div class="flex justify-between items-center text-xs text-slate-400 pt-3 border-t mt-2">
+                            <span>班级：{{ item.class }} | 提交：{{ item.date }}</span>
+                            <div class="flex items-center space-x-3">
+                                <button v-if="currentUser.role === 'teacher'" @click.stop="deletePerfectHomework(item.id)" class="bg-red-500 hover:bg-red-600 text-white font-extrabold px-3 py-1.5 rounded-lg text-xs transition shadow flex items-center gap-1">
+                                    <i class="fa-solid fa-trash-can"></i> 删除
+                                </button>
+                                <span class="text-purple-600 font-bold">详情 &rarr;</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="filteredPerfectList.length === 0" class="text-center py-12 text-slate-400">
+                    <i class="fa-regular fa-folder-open text-4xl mb-2 block"></i>暂无符合条件的优秀作业
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 优秀作业详情页 ========== -->
+        <div v-if="currentPath.startsWith('perfecthomework')" class="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-lg border mt-6">
+            <div class="flex justify-between items-center mb-6">
+                <button @click="navigateTo('perfect')" class="text-blue-500 hover:underline font-bold text-sm"><i class="fa-solid fa-arrow-left"></i> 返回列表</button>
+                <button v-if="currentUser.role === 'teacher' && currentPerfectItem" @click="deletePerfectHomework(currentPerfectItem.id)" class="bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow">
+                    <i class="fa-solid fa-trash-can"></i> 删除此作业
+                </button>
+            </div>
+            <div v-if="currentPerfectItem" class="space-y-6">
+                <div class="border-b pb-4">
+                    <p class="text-xs text-purple-600 font-bold uppercase tracking-wider">Honorary Homework</p>
+                    <h2 class="text-3xl font-black text-slate-800 mt-1">学生昵称：{{ currentPerfectItem.studentName }}</h2>
+                    <p class="text-sm text-slate-400 mt-1">班级：{{ currentPerfectItem.class }} | 评分：{{ currentPerfectItem.grade }}分 | 日期：{{ currentPerfectItem.date }}</p>
+                </div>
+                <div class="bg-slate-50 rounded-2xl p-2 border flex justify-center overflow-hidden">
+                    <img :src="currentPerfectItem.image" class="max-h-[500px] object-contain rounded-xl shadow-md hover:scale-[1.02] transition duration-300">
+                </div>
+                <div class="bg-slate-50/50 p-4 rounded-xl border text-sm">
+                    <strong class="text-slate-700 block mb-1">作业描述：</strong>
+                    <p class="text-slate-600 leading-relaxed">{{ currentPerfectItem.desc }}</p>
+                </div>
+                <div class="bg-purple-50/80 p-5 rounded-xl border border-purple-100">
+                    <strong class="text-purple-900 flex items-center gap-1 mb-1.5 text-sm"><i class="fa-solid fa-award"></i> 老师评语：</strong>
+                    <p class="text-purple-800 text-sm leading-relaxed italic">{{ currentPerfectItem.comment || "作业表现优异，特此表扬！" }}</p>
+                </div>
+            </div>
+            <div v-else class="text-center py-12 text-slate-400">该作业已被删除或不存在。</div>
+        </div>
+
+        <!-- ========== 教师后台管理 ========== -->
+        <div v-if="currentPath === 'manage'" class="space-y-8">
+            <div class="border-b pb-4">
+                <h1 class="text-3xl font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-gears text-blue-600"></i> 教学后台管理中心</h1>
+            </div>
+
+            <!-- 第一板块：折叠式查看作业 -->
+            <section class="bg-white p-6 rounded-2xl shadow-sm border">
+                <div class="border-b pb-3 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                    <h2 class="text-lg font-black flex items-center gap-2"><i class="fa-solid fa-list-check text-blue-500"></i> 第一板块：作业查看与评分</h2>
+                    <input v-model="searchManageName" type="text" placeholder="按姓名搜索..." class="border p-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-400 w-48">
+                </div>
+
+                <!-- 已交作业 (手风琴折叠) -->
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">1. 已交作业 (点击展开/收起)</h3>
+                
+                <div v-if="Object.keys(groupedSubmittedHomework).length === 0" class="text-center py-8 text-slate-400 text-sm">
+                    <i class="fa-regular fa-folder-open text-3xl block mb-2"></i> 暂无提交的作业
+                </div>
+                
+                <div v-for="(studentMap, cls) in groupedSubmittedHomework" :key="cls" class="mb-3">
+                    <!-- 班级折叠头 -->
+                    <div @click="toggleClassFolder(cls)" class="flex items-center justify-between bg-blue-50 hover:bg-blue-100 rounded-xl px-4 py-3 cursor-pointer transition border border-blue-100 select-none">
+                        <div class="flex items-center gap-2 font-bold text-blue-800">
+                            <i :class="openClass === cls ? 'fa-solid fa-folder-open text-blue-500' : 'fa-solid fa-folder text-blue-400'"></i>
+                            <span>班级：{{ cls }}</span>
+                            <span class="text-xs font-normal text-blue-500">({{ Object.keys(studentMap).length }}人)</span>
+                        </div>
+                        <i :class="openClass === cls ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="text-blue-400 text-xs"></i>
+                    </div>
+
+                    <!-- 班级展开内容 -->
+                    <div v-if="openClass === cls" class="pl-4 mt-2 space-y-2">
+                        <div v-for="(hwList, stuName) in studentMap" :key="stuName" class="border rounded-xl overflow-hidden">
+                            <!-- 学员折叠头 -->
+                            <div @click="toggleStudentFolder(stuName)" class="flex items-center justify-between bg-green-50 hover:bg-green-100 px-4 py-2.5 cursor-pointer transition select-none">
+                                <div class="flex items-center gap-2 font-bold text-green-800 text-sm">
+                                    <i :class="openStudent === stuName ? 'fa-solid fa-user text-green-500' : 'fa-regular fa-user text-green-400'"></i>
+                                    <span>{{ stuName }}</span>
+                                    <span class="text-xs font-normal text-green-500">({{ hwList.length }}份作业)</span>
+                                </div>
+                                <i :class="openStudent === stuName ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'" class="text-green-400 text-xs"></i>
+                            </div>
+
+                            <!-- 学员展开内容 -->
+                            <div v-if="openStudent === stuName" class="p-4 space-y-4 bg-white">
+                                <div v-for="hw in hwList" :key="hw.id" class="bg-slate-50 p-4 rounded-xl border">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-xs text-slate-400">日期: {{ hw.date }}</span>
+                                        <span v-if="hw.grade >= 4" class="text-[10px] text-purple-600 font-bold bg-purple-50 px-1.5 py-0.5 rounded"><i class="fa-solid fa-crown"></i> 优秀推荐</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 bg-white p-2 rounded mb-2">{{ hw.desc }}</p>
+                                    <div v-if="hw.question" class="text-xs text-red-500 bg-red-50 p-2 rounded border border-red-100 mb-2">
+                                        <strong>提问:</strong> {{ hw.question }}
+                                    </div>
+                                    <div v-if="hw.image" class="mb-3">
+                                        <img :src="hw.image" class="h-28 w-full object-cover rounded-lg border">
+                                    </div>
+                                    <div class="space-y-2 border-t pt-2">
+                                        <div class="flex gap-2 items-center">
+                                            <span class="text-xs font-bold text-slate-500 whitespace-nowrap">评分(0-5):</span>
+                                            <input v-model.number="hw.grade" type="number" min="0" max="5" step="0.1" class="w-20 border text-xs p-1 rounded outline-none focus:ring">
+                                        </div>
+                                        <textarea v-model="hw.comment" placeholder="输入评语..." class="w-full text-xs p-1.5 border rounded outline-none" rows="2"></textarea>
+                                        <div class="flex gap-2">
+                                            <button @click="saveGrade(hw)" class="flex-1 bg-blue-600 text-white text-xs py-1.5 rounded font-bold hover:bg-blue-700 transition">保存评分</button>
+                                            <button @click="downloadStudentDoc(hw)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-1.5 px-2.5 rounded font-bold flex items-center gap-1">
+                                                <i class="fa-solid fa-file-word text-blue-600"></i> Word
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 未交作业 -->
+                <div class="mt-8 space-y-4">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider">2. 缺交作业预警</h3>
+                    <div v-if="Object.keys(groupedMissingHomework).length === 0" class="text-center py-6 text-slate-400 text-sm">
+                        <i class="fa-solid fa-check-circle text-green-400 text-2xl block mb-2"></i> 全员已交，无缺交记录
+                    </div>
+                    <div v-for="(list, cls) in groupedMissingHomework" :key="cls" class="bg-red-50/20 p-4 rounded-xl border border-red-100/50">
+                        <h4 class="text-red-700 font-bold text-xs flex items-center gap-1.5 mb-2">
+                            <i class="fa-solid fa-triangle-exclamation"></i> {{ cls }} ({{ list.length }}人未交)
+                        </h4>
+                        <div class="flex flex-wrap gap-2">
+                            <span v-for="stu in list" :key="stu.uid" class="bg-white border text-xs font-bold text-slate-700 px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-user-xmark text-red-400"></i> {{ stu.nickname }} ({{ stu.realName }})
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 第二板块：学员管理 -->
+            <section class="bg-white p-6 rounded-2xl shadow-sm border">
+                <div class="border-b pb-3 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                    <h2 class="text-lg font-black flex items-center gap-2"><i class="fa-solid fa-user-gear text-green-500"></i> 第二板块：学员角色管理</h2>
+                    <input v-model="searchStudentName" type="text" placeholder="搜索学生..." class="border p-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-green-400 w-48">
+                </div>
+                <div class="overflow-x-auto rounded-xl border">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50 border-b">
+                                <th class="p-3 font-bold text-slate-600">姓名 / 昵称</th>
+                                <th class="p-3 font-bold text-slate-600">班级</th>
+                                <th class="p-3 font-bold text-slate-600">角色</th>
+                                <th class="p-3 font-bold text-slate-600 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="u in filteredUsers" :key="u.uid" class="border-b hover:bg-slate-50/50">
+                                <td class="p-3">
+                                    <div class="font-bold text-slate-800">{{ u.realName }}</div>
+                                    <div class="text-slate-400 text-[10px]">昵称: {{ u.nickname }} (UID: {{ u.uid }})</div>
+                                </td>
+                                <td class="p-3 font-semibold text-slate-600">{{ u.class || '教研室' }}</td>
+                                <td class="p-3">
+                                    <select v-model="u.role" class="border p-1 rounded bg-white text-xs outline-none">
+                                        <option value="student">学生</option>
+                                        <option value="parent">家长</option>
+                                        <option value="teacher">老师</option>
+                                    </select>
+                                </td>
+                                <td class="p-3 text-center">
+                                    <button @click="deleteUser(u)" class="text-red-500 hover:text-red-700 font-bold"><i class="fa-solid fa-trash-can"></i> 删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button @click="saveStudentManagement" class="bg-green-600 hover:bg-green-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-md">保存学员设置</button>
+                </div>
+            </section>
+
+            <!-- 第三板块：公告编辑 -->
+            <section class="bg-white p-6 rounded-2xl shadow-sm border">
+                <h2 class="text-lg font-black flex items-center gap-2 mb-4"><i class="fa-solid fa-pen-to-square text-purple-500"></i> 第三板块：公告编辑 (Markdown)</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 mb-1">编辑器</label>
+                        <textarea v-model="announcement" rows="8" class="w-full border p-3 rounded-xl font-mono text-xs outline-none focus:ring focus:ring-purple-200" placeholder="输入公告..."></textarea>
+                    </div>
+                    <div class="border rounded-xl bg-slate-50 p-4">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 border-b pb-1">预览</label>
+                        <div class="max-h-48 overflow-y-auto text-xs leading-relaxed" v-html="renderMarkdown(announcement)"></div>
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button @click="saveAnnouncement" class="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-md">保存发布公告</button>
+                </div>
+            </section>
+        </div>
+
+        <!-- ========== 个人中心 ========== -->
+        <div v-if="currentPath === 'me'" class="max-w-4xl mx-auto space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border flex flex-col md:flex-row items-center gap-6">
+                <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl shadow-inner">
+                    <i class="fa-solid fa-user-shield"></i>
+                </div>
+                <div class="text-center md:text-left flex-1 space-y-1">
+                    <h2 class="text-2xl font-black text-slate-800">{{ currentUser.nickname }}</h2>
+                    <p class="text-sm text-slate-400">真名：{{ currentUser.realName }} | 身份：{{ roleText(currentUser.role) }}</p>
+                    <p class="text-xs text-slate-500">班级：{{ currentUser.class || '教师组' }} | UID: {{ currentUser.uid }}</p>
+                </div>
+            </div>
+            <!-- AI评价 -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-l-4 border-l-rose-500">
+                <h3 class="text-lg font-black text-rose-600 mb-3 flex items-center gap-1.5"><i class="fa-solid fa-robot"></i> AI智能学科诊断 (近15次作业)</h3>
+                <div class="bg-rose-50/50 p-4 rounded-xl border border-rose-100 text-sm leading-relaxed text-slate-700 font-mono">{{ aiReport }}</div>
+            </div>
+            <!-- 高分作业展 -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-t-4 border-t-purple-500">
+                <h3 class="text-lg font-black text-purple-600 mb-4 flex items-center gap-2"><i class="fa-solid fa-medal"></i> 荣誉榜 (评分 >= 4)</h3>
+                <div v-if="myPerfectHomeworks.length > 0" class="relative flex items-center">
+                    <button @click="prevMySlide" class="absolute -left-2 bg-white/95 p-1.5 rounded-full shadow border hover:scale-105 transition z-10"><i class="fa-solid fa-chevron-left text-purple-500"></i></button>
+                    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 w-full px-6">
+                        <div v-for="item in visibleMyPerfectHomework" :key="item.id" @click="goToPerfectDetail(item.id)" class="bg-slate-50 p-2 rounded-xl border hover:shadow-md cursor-pointer transition text-center">
+                            <img :src="item.image" class="h-16 w-full object-cover rounded-lg mb-1">
+                            <span class="text-[10px] text-slate-500 block truncate">{{ item.date }}</span>
+                            <span class="text-[9px] bg-purple-100 text-purple-800 font-bold px-1 rounded-full block mt-0.5">{{ item.grade }}分</span>
+                        </div>
+                    </div>
+                    <button @click="nextMySlide" class="absolute -right-2 bg-white/95 p-1.5 rounded-full shadow border hover:scale-105 transition z-10"><i class="fa-solid fa-chevron-right text-purple-500"></i></button>
+                </div>
+                <div v-else class="text-center py-10 text-slate-400 text-sm">
+                    <i class="fa-solid fa-award text-3xl mb-1 text-slate-300 block"></i>暂无高分作业
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 公告弹窗 -->
+    <div v-if="showAnnounceModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 blur-bg" @click="showAnnounceModal = false"></div>
+        <div class="bg-white rounded-2xl p-6 max-w-lg w-full z-10 shadow-2xl relative border">
+            <h3 class="text-xl font-black mb-4 flex items-center gap-2"><i class="fa-solid fa-bullhorn text-blue-500 animate-pulse"></i> 公告详情</h3>
+            <div class="max-h-60 overflow-y-auto border p-4 rounded-xl bg-slate-50 text-slate-700 leading-relaxed text-sm" v-html="renderMarkdown(announcement)"></div>
+            <button @click="showAnnounceModal = false" class="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const currentPath = ref('login');
+        const isLoggedIn = ref(false);
+
+        // 用户库 (仅 valor + 一个测试老师)
+        const users = ref([
+            { uid: 1, nickname: 'valor', realName: 'valor', role: 'student', class: '3年级1班', password: '12101130' },
+            { uid: 2, nickname: '王老师', realName: '王老师', role: 'teacher', class: '教师组', password: '123' }
+        ]);
+
+        // 作业库 (初始为空，无任何案例数据)
+        const homeworkList = ref([]);
+
+        const announcement = ref(`# 欢迎使用作业管理系统\n\n1. 请各年级同学**按时提交**作业；\n2. 评分 > 4.0 将自动推荐至**优秀作业墙**；\n3. 优秀作业每两周自动清空一次。`);
+        const showAnnounceModal = ref(false);
+        const hasMessage = ref(true);
+
+        const carouselIndex = ref(0);
+        const myCarouselIndex = ref(0);
+        const searchPerfectName = ref('');
+        const searchManageName = ref('');
+        const searchStudentName = ref('');
+
+        const loginForm = ref({ nickname: '', password: '' });
+        const registerForm = ref({ realName: '', nickname: '', grade: 1, classNum: 1, password: '', confirmPassword: '', role: 'student' });
+        const quickSubmit = ref({ desc: '', image: null, preview: null });
+        const submitPageForm = ref({ desc: '', image: null, preview: null, question: '' });
+        const parentQuestion = ref('');
+        const currentUser = ref({ uid: null, nickname: '访客', realName: '访客', role: 'student', class: '' });
+
+        // 折叠控制 (手风琴)
+        const openClass = ref(null);
+        const openStudent = ref(null);
+
+        const toggleClassFolder = (cls) => {
+            if (openClass.value === cls) {
+                openClass.value = null;
+                openStudent.value = null;
+            } else {
+                openClass.value = cls;
+                openStudent.value = null; // 切换班级时重置学员选择
+            }
+        };
+
+        const toggleStudentFolder = (stuName) => {
+            if (openStudent.value === stuName) {
+                openStudent.value = null;
+            } else {
+                openStudent.value = stuName;
+            }
+        };
+
+        // 两周过期过滤函数
+        const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+        const isWithinTwoWeeks = (dateStr) => {
+            const d = new Date(dateStr);
+            const now = new Date();
+            return (now.getTime() - d.getTime()) <= TWO_WEEKS_MS;
+        };
+
+        // 优秀作业 = 评分 >= 4 且在两周内
+        const activePerfectList = computed(() => {
+            return homeworkList.value.filter(item => item.grade >= 4.0 && isWithinTwoWeeks(item.date));
+        });
+
+        const filteredPerfectList = computed(() => {
+            const name = searchPerfectName.value.trim();
+            if (!name) return activePerfectList.value;
+            return activePerfectList.value.filter(item => item.studentName.includes(name));
+        });
+
+        const visibleHomework = computed(() => {
+            const list = activePerfectList.value;
+            if (list.length === 0) return [];
+            const result = [];
+            for (let i = 0; i < Math.min(4, list.length); i++) {
+                result.push(list[(carouselIndex.value + i) % list.length]);
+            }
+            return result;
+        });
+
+        const nextSlide = () => {
+            if (activePerfectList.value.length > 0) carouselIndex.value = (carouselIndex.value + 1) % activePerfectList.value.length;
+        };
+        const prevSlide = () => {
+            if (activePerfectList.value.length > 0) carouselIndex.value = (carouselIndex.value - 1 + activePerfectList.value.length) % activePerfectList.value.length;
+        };
+
+        const goToPerfectDetail = (id) => { navigateTo(`perfecthomework/${id}`); };
+
+        const currentPerfectItem = computed(() => {
+            if (currentPath.value.startsWith('perfecthomework/')) {
+                return homeworkList.value.find(item => item.id === currentPath.value.split('/')[1]);
+            }
+            return null;
+        });
+
+        const deletePerfectHomework = (id) => {
+            if (confirm('确定要彻底删除该作业吗？')) {
+                homeworkList.value = homeworkList.value.filter(item => item.id !== id);
+                alert('删除成功！');
+                navigateTo('perfect');
+            }
+        };
+
+        // 我的优秀作业
+        const myPerfectHomeworks = computed(() => {
+            const searchId = currentUser.value.role === 'parent'
+                ? users.value.find(u => u.realName === currentUser.value.realName && u.role === 'student')?.uid
+                : currentUser.value.uid;
+            return homeworkList.value.filter(item => item.studentId === searchId && item.grade >= 4.0 && isWithinTwoWeeks(item.date));
+        });
+
+        const visibleMyPerfectHomework = computed(() => {
+            const list = myPerfectHomeworks.value;
+            if (list.length === 0) return [];
+            const result = [];
+            for (let i = 0; i < Math.min(6, list.length); i++) {
+                result.push(list[(myCarouselIndex.value + i) % list.length]);
+            }
+            return result;
+        });
+
+        const nextMySlide = () => {
+            if (myPerfectHomeworks.value.length > 0) myCarouselIndex.value = (myCarouselIndex.value + 1) % myPerfectHomeworks.value.length;
+        };
+        const prevMySlide = () => {
+            if (myPerfectHomeworks.value.length > 0) myCarouselIndex.value = (myCarouselIndex.value - 1 + myPerfectHomeworks.value.length) % myPerfectHomeworks.value.length;
+        };
+
+        // 分类已交 (班级 -> 学员名 -> 作业列表)
+        const groupedSubmittedHomework = computed(() => {
+            const result = {};
+            const filter = searchManageName.value.trim();
+            homeworkList.value.forEach(hw => {
+                if (filter && !hw.studentName.includes(filter)) return;
+                if (!result[hw.class]) result[hw.class] = {};
+                if (!result[hw.class][hw.studentName]) result[hw.class][hw.studentName] = [];
+                result[hw.class][hw.studentName].push(hw);
+            });
+            return result;
+        });
+
+        // 未交作业
+        const groupedMissingHomework = computed(() => {
+            const result = {};
+            users.value.filter(u => u.role === 'student').forEach(stu => {
+                if (!homeworkList.value.some(hw => hw.studentId === stu.uid)) {
+                    if (!result[stu.class]) result[stu.class] = [];
+                    result[stu.class].push(stu);
+                }
+            });
+            return result;
+        });
+
+        // 图片上传
+        const handleImageUpload = (event, type) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (type === 'quick') { quickSubmit.value.image = file; quickSubmit.value.preview = e.target.result; }
+                    else { submitPageForm.value.image = file; submitPageForm.value.preview = e.target.result; }
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        // 提交作业
+        const submitHomework = (type) => {
+            const form = type === 'quick' ? quickSubmit.value : submitPageForm.value;
+            if (!form.desc.trim()) { alert('请填写作业描述！'); return; }
+            const newId = String(Date.now());
+            homeworkList.value.unshift({
+                id: newId,
+                studentId: currentUser.value.uid || 999,
+                studentName: currentUser.value.nickname,
+                class: currentUser.value.class || '未分配',
+                image: form.preview || 'https://images.unsplash.com/photo-1516979187457-637abb4f9353?auto=format&fit=crop&w=400&q=80',
+                desc: form.desc,
+                date: new Date().toISOString().split('T')[0],
+                grade: 0.0,
+                comment: '',
+                question: type === 'page' ? form.question : ''
+            });
+            alert('作业提交成功！');
+            if (type === 'quick') { quickSubmit.value = { desc: '', image: null, preview: null }; }
+            else { submitPageForm.value = { desc: '', image: null, preview: null, question: '' }; navigateTo('home'); }
+        };
+
+        const submitQuestion = () => {
+            if (!parentQuestion.value.trim()) { alert('请输入问题！'); return; }
+            alert(`提问 "${parentQuestion.value}" 已提交！`);
+            parentQuestion.value = '';
+        };
+
+        // 登录
+        const handleLogin = () => {
+            if (loginForm.value.nickname === '1234ZMXZJD' && loginForm.value.password === '12101130') {
+                const valorAcct = users.value.find(u => u.uid === 1);
+                currentUser.value = { ...valorAcct };
+                isLoggedIn.value = true;
+                alert(`登录成功！欢迎 valor (${roleText(currentUser.value.role)})`);
+                navigateTo('home');
+                return;
+            }
+            const found = users.value.find(u => u.nickname === loginForm.value.nickname && u.password === loginForm.value.password);
+            if (found) {
+                currentUser.value = { ...found };
+                isLoggedIn.value = true;
+                alert(`欢迎回来，${found.nickname}！`);
+                navigateTo('home');
+            } else {
+                alert('用户名或密码错误！');
+            }
+        };
+
+        const logout = () => {
+            isLoggedIn.value = false;
+            currentUser.value = { uid: null, nickname: '访客', realName: '访客', role: 'student', class: '' };
+            loginForm.value = { nickname: '', password: '' };
+            alert('已安全退出。');
+            navigateTo('login');
+        };
+
+        const requestPasswordReset = () => {
+            if (confirm('确认申请重置密码为 123456 吗？')) {
+                alert('申请已发送，管理员将处理！');
+            }
+        };
+
+        const handleRegister = () => {
+            const form = registerForm.value;
+            if (!form.realName || !form.nickname || !form.password) { alert('请填写完整信息！'); return; }
+            if (form.password !== form.confirmPassword) { alert('两次密码不一致！'); return; }
+            if (users.value.some(u => u.nickname === form.nickname)) { alert('昵称已存在！'); return; }
+            users.value.push({
+                uid: Date.now(),
+                realName: form.realName,
+                nickname: form.nickname,
+                role: form.role,
+                class: `${form.grade}年级${form.classNum}班`,
+                password: form.password
+            });
+            alert('注册成功，可直接登录！');
+            registerForm.value = { realName: '', nickname: '', grade: 1, classNum: 1, password: '', confirmPassword: '', role: 'student' };
+            navigateTo('login');
+        };
+
+        const saveGrade = (hw) => {
+            if (hw.grade < 0 || hw.grade > 5) { alert('请输入0~5的评分！'); return; }
+            alert(`评分已保存：${hw.grade}分`);
+        };
+
+        const downloadStudentDoc = (hw) => {
+            const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+            <head><meta charset="utf-8"><title>作业</title></head>
+            <body style="font-family:Arial;padding:20px;">
+            <h1 style="color:#2563eb;text-align:center;">作业归档文档</h1><hr/>
+            <p><b>学生：</b>${hw.studentName}</p><p><b>班级：</b>${hw.class}</p><p><b>日期：</b>${hw.date}</p>
+            <p><b>评分：</b><span style="color:red;font-size:18px;">${hw.grade}</span>/5</p><hr/>
+            <h3>描述：</h3><p style="background:#f3f4f6;padding:10px;">${hw.desc}</p>
+            ${hw.question ? `<h3>疑问：</h3><p style="color:red;background:#fee2e2;padding:10px;">${hw.question}</p>` : ''}
+            <h3>附图：</h3><p><img src="${hw.image}" style="max-width:500px;width:100%;"/></p>
+            <h3>评语：</h3><p style="color:#1e3a8a;font-style:italic;">"${hw.comment || '无'}"</p>
+            </body></html>`;
+            const blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${hw.class}_${hw.studentName}_作业.doc`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        const filteredUsers = computed(() => {
+            const q = searchStudentName.value.trim();
+            if (!q) return users.value;
+            return users.value.filter(u => u.realName.includes(q) || u.nickname.includes(q) || (u.class && u.class.includes(q)));
+        });
+
+        const deleteUser = (usr) => {
+            if (usr.role === 'teacher' && currentUser.value.uid !== 1) {
+                alert('只有 valor (UID=1) 才能删除老师账号！');
+                return;
+            }
+            if (confirm(`确认删除 ${usr.realName}?`)) {
+                users.value = users.value.filter(u => u.uid !== usr.uid);
+                alert('已删除！');
+            }
+        };
+
+        const saveStudentManagement = () => { alert('学员设置已保存！'); };
+        const renderMarkdown = (text) => marked.parse(text);
+        const saveAnnouncement = () => { alert('公告已发布！'); };
+
+        const aiReport = computed(() => {
+            const qid = currentUser.value.role === 'parent'
+                ? users.value.find(u => u.realName === currentUser.value.realName && u.role === 'student')?.uid
+                : currentUser.value.uid;
+            const my = homeworkList.value.filter(h => h.studentId === qid);
+            if (my.length === 0) return "💡 暂无作业记录，无法生成AI诊断。请先提交作业。";
+            const avg = (my.reduce((s, c) => s + c.grade, 0) / my.length).toFixed(1);
+            let txt = "";
+            if (avg >= 4.5) txt = "【精益求精能力待提升】综合优异但对高难度拓展题目主动性稍弱，建议挑战附加题。";
+            else if (avg >= 3.5) txt = "【细节规范与计算准确率偏低】多次因粗心失分，建议答题后预留时间检查。";
+            else txt = "【基础知识薄弱】得分较低，建议及时向老师请教，巩固基本概念。";
+            return `🤖 AI诊断：近期${my.length}次作业均分 ${avg}分。缺陷分析：${txt}`;
+        });
+
+        const toggleNotification = () => { alert('通知：欢迎使用作业提交系统！'); hasMessage.value = false; };
+        const roleText = (role) => ({ student: '学生', parent: '家长', teacher: '老师' }[role] || '访客');
+        const truncateText = (text, len) => text.length > len ? text.substring(0, len) + '...' : text;
+
+        const checkAuthorization = () => {
+            if (!isLoggedIn.value && currentPath.value !== 'login' && currentPath.value !== 'register') {
+                currentPath.value = 'login';
+                window.location.hash = 'login';
+            }
+        };
+
+        const navigateTo = (path) => {
+            currentPath.value = path;
+            window.location.hash = path;
+            checkAuthorization();
+        };
+
+        const handleHashChange = () => {
+            const hash = window.location.hash.replace('#', '');
+            if (hash.startsWith('perfecthomework/')) currentPath.value = hash;
+            else currentPath.value = hash || 'home';
+            checkAuthorization();
+        };
+        window.addEventListener('hashchange', handleHashChange);
+
+        onMounted(() => {
+            checkAuthorization();
+            setInterval(nextSlide, 5000);
+            setInterval(nextMySlide, 6000);
+        });
+
+        const navLinkClass = (p) => currentPath.value === p
+            ? 'bg-blue-700 px-3 py-1.5 rounded-lg text-sm font-extrabold transition'
+            : 'hover:bg-blue-700 px-3 py-1.5 rounded-lg text-sm font-bold transition';
+
+        return {
+            currentPath, isLoggedIn, currentUser, users, homeworkList,
+            announcement, showAnnounceModal, hasMessage,
+            searchPerfectName, searchManageName, searchStudentName,
+            loginForm, registerForm, quickSubmit, submitPageForm, parentQuestion,
+            openClass, openStudent, toggleClassFolder, toggleStudentFolder,
+            activePerfectList, filteredPerfectList, visibleHomework,
+            nextSlide, prevSlide, goToPerfectDetail, currentPerfectItem, deletePerfectHomework,
+            myPerfectHomeworks, visibleMyPerfectHomework, nextMySlide, prevMySlide,
+            handleImageUpload, submitHomework, submitQuestion,
+            handleLogin, logout, requestPasswordReset, handleRegister,
+            groupedSubmittedHomework, groupedMissingHomework,
+            saveGrade, downloadStudentDoc, filteredUsers, deleteUser, saveStudentManagement,
+            renderMarkdown, saveAnnouncement, aiReport,
+            toggleNotification, roleText, truncateText, navigateTo, navLinkClass
+        };
+    }
+}).mount('#app');
+</script>
+
+</body>
+</html>
